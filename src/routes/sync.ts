@@ -78,10 +78,12 @@ async function processPromotion(
   sourceAgent: string
 ): Promise<PromotionResult> {
   // Check for near-duplicates (also returns the embedding)
+  // Pass promo.id as excludeId to avoid self-matching on retry
   const dupCheck = await checkDuplicateWithEmbedding(
     env.VECTORIZE,
     env.AI,
-    promo.content
+    promo.content,
+    promo.id
   );
   if (dupCheck.isDuplicate && dupCheck.existingId) {
     return { isDuplicate: true, bulletId: dupCheck.existingId };
