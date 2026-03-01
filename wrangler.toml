@@ -1,0 +1,23 @@
+name = "bullet-hive"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bullet-hive-db"
+database_id = "placeholder"
+migrations_dir = "migrations"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "bullet-hive-vectors"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "bullet-hive-storage"
+
+[ai]
+binding = "AI"
