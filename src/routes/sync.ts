@@ -86,7 +86,7 @@ async function processPromotion(
     return { isDuplicate: true, bulletId: dupCheck.existingId };
   }
 
-  // Insert into D1
+  // Insert into D1 first (source of truth)
   const tagsJson = JSON.stringify(promo.tags);
   await env.DB.prepare(
     `INSERT OR IGNORE INTO bullets (id, section, content, tags, scope, helpful, harmful, source_agent)
@@ -104,27 +104,34 @@ async function processPromotion(
     )
     .run();
 
-  // Upsert embedding into Vectorize (reuse embedding from dedup check)
-  await env.VECTORIZE.upsert([
-    {
-      id: promo.id,
-      values: dupCheck.embedding,
-      metadata: {
-        section: promo.section,
-        scope: promo.scope,
+  // Best-effort secondary writes: Vectorize and R2
+  try {
+    await env.VECTORIZE.upsert([
+      {
+        id: promo.id,
+        values: dupCheck.embedding,
+        metadata: {
+          section: promo.section,
+          scope: promo.scope,
+        },
       },
-    },
-  ]);
+    ]);
+  } catch (e) {
+    console.error(`Vectorize upsert failed for promotion ${promo.id}:`, e);
+  }
 
-  // Store in R2 if content is long
   if (promo.content.length > R2_CONTENT_THRESHOLD) {
-    const payload = JSON.stringify({
-      ...promo,
-      source_agent: sourceAgent,
-    });
-    await env.R2.put(`bullets/${promo.id}.json`, payload, {
-      httpMetadata: { contentType: "application/json" },
-    });
+    try {
+      const payload = JSON.stringify({
+        ...promo,
+        source_agent: sourceAgent,
+      });
+      await env.R2.put(`bullets/${promo.id}.json`, payload, {
+        httpMetadata: { contentType: "application/json" },
+      });
+    } catch (e) {
+      console.error(`R2 put failed for promotion ${promo.id}:`, e);
+    }
   }
 
   return { isDuplicate: false, bulletId: promo.id };
