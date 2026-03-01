@@ -8,7 +8,7 @@ crons = ["0 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "bullet-hive-db"
-database_id = "placeholder"
+database_id = "3ec6118f-5e57-4f3f-b289-97730fa65e0a"
 migrations_dir = "migrations"
 
 [[vectorize]]
