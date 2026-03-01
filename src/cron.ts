@@ -1,4 +1,4 @@
-import type { Env, BulletRow } from "./types";
+import type { Env, BulletRow, BulletVoteRow } from "./types";
 import {
   DEPRECATION_SCORE_THRESHOLD,
   DEPRECATION_AGENTS_THRESHOLD,
@@ -117,7 +117,30 @@ async function deduplicateBullets(env: Env): Promise<void> {
           .bind(mergeHelpful, mergeHarmful, keepId)
           .run();
 
-        // Delete the loser
+        // Migrate vote records from loser to winner before deletion
+        // (CASCADE would delete them, losing merged vote data)
+        const loserVotes = await env.DB.prepare(
+          `SELECT agent_id, helpful_total, harmful_total FROM bullet_votes WHERE bullet_id = ?`
+        )
+          .bind(removeId)
+          .all<Pick<BulletVoteRow, "agent_id" | "helpful_total" | "harmful_total">>();
+
+        if (loserVotes.results.length > 0) {
+          const voteStatements = loserVotes.results.map((v) =>
+            env.DB.prepare(
+              `INSERT INTO bullet_votes (bullet_id, agent_id, helpful_total, harmful_total, last_synced_at)
+               VALUES (?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(bullet_id, agent_id)
+               DO UPDATE SET
+                 helpful_total = helpful_total + ?,
+                 harmful_total = harmful_total + ?,
+                 last_synced_at = datetime('now')`
+            ).bind(keepId, v.agent_id, v.helpful_total, v.harmful_total, v.helpful_total, v.harmful_total)
+          );
+          await env.DB.batch(voteStatements);
+        }
+
+        // Delete the loser (CASCADE will clean up any remaining vote refs)
         await env.DB.prepare(`DELETE FROM bullets WHERE id = ?`)
           .bind(removeId)
           .run();
