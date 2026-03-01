@@ -44,7 +44,15 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
   for (const row of result.results) {
     if (matched.length >= limit) break;
 
-    const parsedTags: string[] = JSON.parse(row.tags) as string[];
+    let parsedTags: string[];
+    try {
+      const raw: unknown = JSON.parse(row.tags);
+      parsedTags = Array.isArray(raw)
+        ? raw.filter((t): t is string => typeof t === "string")
+        : [];
+    } catch {
+      parsedTags = [];
+    }
 
     if (row.scope === "universal") {
       matched.push({ ...row, parsedTags });
