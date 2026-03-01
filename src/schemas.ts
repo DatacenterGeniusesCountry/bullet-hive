@@ -12,7 +12,7 @@ const bulletSchema = z.object({
   id: z.string().min(1).max(100),
   section: sectionEnum,
   content: z.string().min(1).max(MAX_CONTENT_LENGTH),
-  tags: z.array(z.string().min(1).max(50)),
+  tags: z.array(z.string().min(1).max(50)).max(20),
   scope: scopeEnum,
 });
 
@@ -25,11 +25,11 @@ export type PublishBody = z.infer<typeof publishBodySchema>;
 
 export const fetchBodySchema = z.object({
   env_fingerprint: z.object({
-    languages: z.array(z.string()),
-    frameworks: z.array(z.string()),
+    languages: z.array(z.string()).max(20),
+    frameworks: z.array(z.string()).max(20),
     project: z.string(),
   }),
-  known_ids: z.array(z.string()).default([]),
+  known_ids: z.array(z.string()).max(200).default([]),
   limit: z.number().int().min(1).max(100).default(20),
 });
 
@@ -45,7 +45,7 @@ const promotionSchema = z.object({
   id: z.string().min(1).max(100),
   section: sectionEnum,
   content: z.string().min(1).max(MAX_CONTENT_LENGTH),
-  tags: z.array(z.string().min(1).max(50)),
+  tags: z.array(z.string().min(1).max(50)).max(20),
   scope: scopeEnum,
   helpful: z.number().int().min(0).default(0),
   harmful: z.number().int().min(0).default(0),
@@ -54,12 +54,12 @@ const promotionSchema = z.object({
 export const syncBodySchema = z.object({
   agent_id: z.string().min(1).max(100),
   env_fingerprint: z.object({
-    languages: z.array(z.string()),
-    frameworks: z.array(z.string()),
+    languages: z.array(z.string()).max(20),
+    frameworks: z.array(z.string()).max(20),
     project: z.string(),
   }),
-  reports: z.array(reportSchema).default([]),
-  promotions: z.array(promotionSchema).default([]),
+  reports: z.array(reportSchema).max(100).default([]),
+  promotions: z.array(promotionSchema).max(20).default([]),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;
