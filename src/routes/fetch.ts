@@ -13,13 +13,16 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
   // We fetch more than limit because we filter in-app by scope+tags
   const batchSize = limit * 5;
 
+  // Cap known_ids to stay within SQLite's SQLITE_MAX_VARIABLE_NUMBER (999)
+  const cappedIds = known_ids.slice(0, 100);
+
   let query = `SELECT * FROM bullets WHERE deprecated = 0`;
   const params: (string | number)[] = [];
 
-  if (known_ids.length > 0) {
-    const placeholders = known_ids.map(() => "?").join(",");
+  if (cappedIds.length > 0) {
+    const placeholders = cappedIds.map(() => "?").join(",");
     query += ` AND id NOT IN (${placeholders})`;
-    params.push(...known_ids);
+    params.push(...cappedIds);
   }
 
   query += ` ORDER BY global_score DESC LIMIT ?`;
@@ -29,8 +32,11 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
     .bind(...params)
     .all<BulletRow>();
 
-  // Filter by scope + tag matching
-  const matched: BulletRow[] = [];
+  // Filter by scope + tag matching, parsing tags once per row
+  interface MatchedBullet extends Omit<BulletRow, "tags" | "deprecated"> {
+    parsedTags: string[];
+  }
+  const matched: MatchedBullet[] = [];
   const lowerLanguages = env_fingerprint.languages.map((l) => l.toLowerCase());
   const lowerFrameworks = env_fingerprint.frameworks.map((f) => f.toLowerCase());
   const lowerProject = env_fingerprint.project.toLowerCase();
@@ -38,29 +44,30 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
   for (const row of result.results) {
     if (matched.length >= limit) break;
 
+    const parsedTags: string[] = JSON.parse(row.tags) as string[];
+
     if (row.scope === "universal") {
-      matched.push(row);
+      matched.push({ ...row, parsedTags });
       continue;
     }
 
-    const tags: string[] = JSON.parse(row.tags) as string[];
-    const lowerTags = tags.map((t) => t.toLowerCase());
+    const lowerTags = parsedTags.map((t) => t.toLowerCase());
 
     if (
       row.scope === "language_specific" &&
       lowerTags.some((t) => lowerLanguages.includes(t))
     ) {
-      matched.push(row);
+      matched.push({ ...row, parsedTags });
     } else if (
       row.scope === "framework_specific" &&
       lowerTags.some((t) => lowerFrameworks.includes(t))
     ) {
-      matched.push(row);
+      matched.push({ ...row, parsedTags });
     } else if (
       row.scope === "project_specific" &&
       lowerTags.some((t) => t === lowerProject)
     ) {
-      matched.push(row);
+      matched.push({ ...row, parsedTags });
     }
   }
 
@@ -68,7 +75,7 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
     id: row.id,
     section: row.section,
     content: row.content,
-    tags: JSON.parse(row.tags) as string[],
+    tags: row.parsedTags,
     scope: row.scope,
     helpful: row.helpful,
     harmful: row.harmful,
