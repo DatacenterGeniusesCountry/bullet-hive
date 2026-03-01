@@ -101,10 +101,6 @@ async function deduplicateBullets(env: Env): Promise<void> {
           bullet.global_score >= dupResult.global_score ? bullet.id : dupResult.id;
         const removeId =
           keepId === bullet.id ? match.id : bullet.id;
-        const mergeHelpful =
-          keepId === bullet.id ? dupResult.helpful : bullet.helpful;
-        const mergeHarmful =
-          keepId === bullet.id ? dupResult.harmful : bullet.harmful;
 
         // Migrate vote records from loser to winner before deletion
         // (CASCADE would delete them, losing merged vote data)
