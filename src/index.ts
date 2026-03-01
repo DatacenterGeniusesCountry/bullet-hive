@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { Env } from "./types";
 import publish from "./routes/publish";
 import fetch_ from "./routes/fetch";
@@ -6,6 +7,8 @@ import sync from "./routes/sync";
 import { handleCron } from "./cron";
 
 const app = new Hono<{ Bindings: Env }>();
+
+app.use("*", bodyLimit({ maxSize: 1024 * 1024 }));
 
 app.get("/", (c) => {
   return c.json({ name: "bullet-hive", status: "ok" });
