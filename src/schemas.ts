@@ -8,8 +8,14 @@ import {
 const sectionEnum = z.enum(VALID_SECTIONS);
 const scopeEnum = z.enum(VALID_SCOPES);
 
+// ID must be alphanumeric with hyphens only (prevents path traversal in R2 keys)
+const bulletIdSchema = z.string().regex(
+  /^[a-z][a-z0-9]*-[0-9]{5}$/,
+  "ID must match format: section-NNNNN (e.g. strategies-00042)"
+);
+
 const bulletSchema = z.object({
-  id: z.string().min(1).max(100),
+  id: bulletIdSchema,
   section: sectionEnum,
   content: z.string().min(1).max(MAX_CONTENT_LENGTH),
   tags: z.array(z.string().min(1).max(50)).max(20),
@@ -42,7 +48,7 @@ const reportSchema = z.object({
 });
 
 const promotionSchema = z.object({
-  id: z.string().min(1).max(100),
+  id: bulletIdSchema,
   section: sectionEnum,
   content: z.string().min(1).max(MAX_CONTENT_LENGTH),
   tags: z.array(z.string().min(1).max(50)).max(20),
