@@ -15,41 +15,39 @@ sync.post("/", zValidator("json", syncBodySchema), async (c) => {
   let syncedPromotions = 0;
   const duplicates: string[] = [];
 
-  // Process reports: update vote tracking and recalculate bullet counters
-  for (const report of reports) {
-    // Upsert into bullet_votes
-    await c.env.DB.prepare(
-      `INSERT INTO bullet_votes (bullet_id, agent_id, helpful_total, harmful_total, last_synced_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(bullet_id, agent_id)
-       DO UPDATE SET
-         helpful_total = helpful_total + ?,
-         harmful_total = harmful_total + ?,
-         last_synced_at = datetime('now')`
-    )
-      .bind(
+  // Process reports: batch upsert votes and recalculate bullet counters
+  if (reports.length > 0) {
+    const reportStatements = reports.flatMap((report) => [
+      // Upsert into bullet_votes
+      c.env.DB.prepare(
+        `INSERT INTO bullet_votes (bullet_id, agent_id, helpful_total, harmful_total, last_synced_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(bullet_id, agent_id)
+         DO UPDATE SET
+           helpful_total = helpful_total + ?,
+           harmful_total = harmful_total + ?,
+           last_synced_at = datetime('now')`
+      ).bind(
         report.bullet_id,
         agent_id,
         report.helpful_delta,
         report.harmful_delta,
         report.helpful_delta,
         report.harmful_delta
-      )
-      .run();
+      ),
+      // Recalculate bullet aggregates from all agent votes
+      c.env.DB.prepare(
+        `UPDATE bullets SET
+           helpful = (SELECT COALESCE(SUM(helpful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
+           harmful = (SELECT COALESCE(SUM(harmful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
+           verified_agents = (SELECT COUNT(DISTINCT agent_id) FROM bullet_votes WHERE bullet_id = ?),
+           updated_at = datetime('now')
+         WHERE id = ?`
+      ).bind(report.bullet_id, report.bullet_id, report.bullet_id, report.bullet_id),
+    ]);
 
-    // Recalculate bullet aggregates from all agent votes
-    await c.env.DB.prepare(
-      `UPDATE bullets SET
-         helpful = (SELECT COALESCE(SUM(helpful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
-         harmful = (SELECT COALESCE(SUM(harmful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
-         verified_agents = (SELECT COUNT(DISTINCT agent_id) FROM bullet_votes WHERE bullet_id = ?),
-         updated_at = datetime('now')
-       WHERE id = ?`
-    )
-      .bind(report.bullet_id, report.bullet_id, report.bullet_id, report.bullet_id)
-      .run();
-
-    syncedReports++;
+    await c.env.DB.batch(reportStatements);
+    syncedReports = reports.length;
   }
 
   // Process promotions: same as publish but batched
