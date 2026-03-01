@@ -53,14 +53,19 @@ async function deprecateBadBullets(env: Env): Promise<void> {
 }
 
 async function deduplicateBullets(env: Env): Promise<void> {
-  // Get non-deprecated bullets ordered by global_score DESC
+  // Only check recently created bullets (last 2 hours) to avoid generating
+  // embeddings for every bullet on each cron run. This covers the hourly
+  // cron interval with a buffer for retries.
   const bullets = await env.DB.prepare(
     `SELECT id, content, global_score, helpful, harmful, verified_agents
      FROM bullets
      WHERE deprecated = 0
-     ORDER BY global_score DESC
-     LIMIT 500`
+       AND created_at > datetime('now', '-2 hours')
+     ORDER BY created_at DESC
+     LIMIT 50`
   ).all<Pick<BulletRow, "id" | "content" | "global_score" | "helpful" | "harmful" | "verified_agents">>();
+
+  if (bullets.results.length === 0) return;
 
   let dedupCount = 0;
   const processedIds = new Set<string>();
@@ -69,7 +74,7 @@ async function deduplicateBullets(env: Env): Promise<void> {
     if (dedupCount >= DEDUP_BATCH_LIMIT) break;
     if (processedIds.has(bullet.id)) continue;
 
-    // Generate embedding and query for near-duplicates
+    // Generate embedding for this recent bullet and find near-duplicates
     const embedding = await generateEmbedding(env.AI, bullet.content);
     const matches = await env.VECTORIZE.query(embedding, {
       topK: 10,
@@ -82,39 +87,49 @@ async function deduplicateBullets(env: Env): Promise<void> {
       if (match.id === bullet.id || processedIds.has(match.id)) continue;
 
       if (match.score >= COSINE_DUPLICATE_THRESHOLD) {
-        // Current bullet has higher score (sorted DESC), so merge into it
+        // Determine winner: keep the one with higher global_score
         const dupResult = await env.DB.prepare(
-          `SELECT helpful, harmful, verified_agents FROM bullets WHERE id = ?`
+          `SELECT id, helpful, harmful, global_score FROM bullets WHERE id = ?`
         )
           .bind(match.id)
-          .first<Pick<BulletRow, "helpful" | "harmful" | "verified_agents">>();
+          .first<Pick<BulletRow, "id" | "helpful" | "harmful" | "global_score">>();
 
-        if (dupResult) {
-          // Sum counters into the winner
-          await env.DB.prepare(
-            `UPDATE bullets SET
-               helpful = helpful + ?,
-               harmful = harmful + ?,
-               updated_at = datetime('now')
-             WHERE id = ?`
-          )
-            .bind(dupResult.helpful, dupResult.harmful, bullet.id)
-            .run();
+        if (!dupResult) continue;
 
-          // Delete the duplicate
-          await env.DB.prepare(`DELETE FROM bullets WHERE id = ?`)
-            .bind(match.id)
-            .run();
+        // Winner keeps, loser merges into winner
+        const keepId =
+          bullet.global_score >= dupResult.global_score ? bullet.id : dupResult.id;
+        const removeId =
+          keepId === bullet.id ? match.id : bullet.id;
+        const mergeHelpful =
+          keepId === bullet.id ? dupResult.helpful : bullet.helpful;
+        const mergeHarmful =
+          keepId === bullet.id ? dupResult.harmful : bullet.harmful;
 
-          // Remove from Vectorize
-          await env.VECTORIZE.deleteByIds([match.id]);
+        // Sum counters into the winner
+        await env.DB.prepare(
+          `UPDATE bullets SET
+             helpful = helpful + ?,
+             harmful = harmful + ?,
+             updated_at = datetime('now')
+           WHERE id = ?`
+        )
+          .bind(mergeHelpful, mergeHarmful, keepId)
+          .run();
 
-          // Remove from R2 if exists
-          await env.R2.delete(`bullets/${match.id}.json`);
+        // Delete the loser
+        await env.DB.prepare(`DELETE FROM bullets WHERE id = ?`)
+          .bind(removeId)
+          .run();
 
-          processedIds.add(match.id);
-          dedupCount++;
-        }
+        // Remove from Vectorize
+        await env.VECTORIZE.deleteByIds([removeId]);
+
+        // Remove from R2 if exists
+        await env.R2.delete(`bullets/${removeId}.json`);
+
+        processedIds.add(removeId);
+        dedupCount++;
       }
     }
 
