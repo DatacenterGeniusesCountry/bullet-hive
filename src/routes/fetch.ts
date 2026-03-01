@@ -11,7 +11,7 @@ fetch_.post("/", zValidator("json", fetchBodySchema), async (c) => {
 
   // Build query for non-deprecated bullets, excluding known_ids
   // We fetch more than limit because we filter in-app by scope+tags
-  const batchSize = limit * 5;
+  const batchSize = Math.min(limit * 5, 250);
 
   // Cap known_ids to stay within SQLite's SQLITE_MAX_VARIABLE_NUMBER (999)
   const cappedIds = known_ids.slice(0, 100);
