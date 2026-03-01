@@ -64,7 +64,6 @@ publish.post("/", zValidator("json", publishBodySchema), async (c) => {
     try {
       const payload = JSON.stringify({
         ...bullet,
-        tags: bullet.tags,
         source_agent,
       });
       await c.env.R2.put(`bullets/${bullet.id}.json`, payload, {
