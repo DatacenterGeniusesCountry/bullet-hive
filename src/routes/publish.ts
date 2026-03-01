@@ -27,12 +27,21 @@ publish.post("/", zValidator("json", publishBodySchema), async (c) => {
 
   // Insert into D1 first (source of truth)
   const tagsJson = JSON.stringify(bullet.tags);
-  await c.env.DB.prepare(
-    `INSERT INTO bullets (id, section, content, tags, scope, source_agent)
+  const insertResult = await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO bullets (id, section, content, tags, scope, source_agent)
      VALUES (?, ?, ?, ?, ?, ?)`
   )
     .bind(bullet.id, bullet.section, bullet.content, tagsJson, bullet.scope, source_agent ?? null)
     .run();
+
+  // If no rows changed, the ID already exists (race/retry)
+  if (insertResult.meta.changes === 0) {
+    return c.json({
+      success: true,
+      bullet_id: bullet.id,
+      is_duplicate: true,
+    });
+  }
 
   // Best-effort secondary writes: Vectorize and R2
   // If these fail, D1 is the source of truth and cron can reconcile later
