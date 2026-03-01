@@ -130,6 +130,11 @@ async function deduplicateBullets(env: Env): Promise<void> {
 
         processedIds.add(removeId);
         dedupCount++;
+
+        // If we deleted the current outer-loop bullet, stop processing its matches
+        if (removeId === bullet.id) {
+          break;
+        }
       }
     }
 
