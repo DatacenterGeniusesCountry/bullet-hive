@@ -106,17 +106,6 @@ async function deduplicateBullets(env: Env): Promise<void> {
         const mergeHarmful =
           keepId === bullet.id ? dupResult.harmful : bullet.harmful;
 
-        // Sum counters into the winner
-        await env.DB.prepare(
-          `UPDATE bullets SET
-             helpful = helpful + ?,
-             harmful = harmful + ?,
-             updated_at = datetime('now')
-           WHERE id = ?`
-        )
-          .bind(mergeHelpful, mergeHarmful, keepId)
-          .run();
-
         // Migrate vote records from loser to winner before deletion
         // (CASCADE would delete them, losing merged vote data)
         const loserVotes = await env.DB.prepare(
@@ -139,6 +128,18 @@ async function deduplicateBullets(env: Env): Promise<void> {
           );
           await env.DB.batch(voteStatements);
         }
+
+        // Recalculate winner's aggregates from merged vote records
+        await env.DB.prepare(
+          `UPDATE bullets SET
+             helpful = (SELECT COALESCE(SUM(helpful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
+             harmful = (SELECT COALESCE(SUM(harmful_total), 0) FROM bullet_votes WHERE bullet_id = ?),
+             verified_agents = (SELECT COUNT(DISTINCT agent_id) FROM bullet_votes WHERE bullet_id = ?),
+             updated_at = datetime('now')
+           WHERE id = ?`
+        )
+          .bind(keepId, keepId, keepId, keepId)
+          .run();
 
         // Delete the loser (CASCADE will clean up any remaining vote refs)
         await env.DB.prepare(`DELETE FROM bullets WHERE id = ?`)
