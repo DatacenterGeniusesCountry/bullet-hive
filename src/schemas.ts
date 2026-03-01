@@ -25,11 +25,11 @@ export type PublishBody = z.infer<typeof publishBodySchema>;
 
 export const fetchBodySchema = z.object({
   env_fingerprint: z.object({
-    languages: z.array(z.string()).max(20),
-    frameworks: z.array(z.string()).max(20),
-    project: z.string(),
+    languages: z.array(z.string().max(50)).max(20),
+    frameworks: z.array(z.string().max(50)).max(20),
+    project: z.string().max(100),
   }),
-  known_ids: z.array(z.string()).max(200).default([]),
+  known_ids: z.array(z.string().max(100)).max(200).default([]),
   limit: z.number().int().min(1).max(100).default(20),
 });
 
@@ -54,9 +54,9 @@ const promotionSchema = z.object({
 export const syncBodySchema = z.object({
   agent_id: z.string().min(1).max(100),
   env_fingerprint: z.object({
-    languages: z.array(z.string()).max(20),
-    frameworks: z.array(z.string()).max(20),
-    project: z.string(),
+    languages: z.array(z.string().max(50)).max(20),
+    frameworks: z.array(z.string().max(50)).max(20),
+    project: z.string().max(100),
   }),
   reports: z.array(reportSchema).max(100).default([]),
   promotions: z.array(promotionSchema).max(20).default([]),
