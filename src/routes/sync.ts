@@ -55,8 +55,9 @@ sync.post("/", zValidator("json", syncBodySchema), async (c) => {
     const result = await processPromotion(c.env, promo, agent_id);
     if (result.isDuplicate) {
       duplicates.push(result.bulletId);
+    } else {
+      syncedPromotions++;
     }
-    syncedPromotions++;
   }
 
   return c.json({
