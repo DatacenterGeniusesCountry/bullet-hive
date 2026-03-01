@@ -36,9 +36,9 @@ export const fetchBodySchema = z.object({
 export type FetchBody = z.infer<typeof fetchBodySchema>;
 
 const reportSchema = z.object({
-  bullet_id: z.string().min(1),
-  helpful_delta: z.number().int(),
-  harmful_delta: z.number().int(),
+  bullet_id: z.string().min(1).max(100),
+  helpful_delta: z.number().int().min(0).max(10),
+  harmful_delta: z.number().int().min(0).max(10),
 });
 
 const promotionSchema = z.object({
